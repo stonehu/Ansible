@@ -26,5 +26,5 @@ for i in $images_list
 do
       docker pull $i
 done
-make -p /root/files/images/
+mkdir -p /root/files/images/
 docker save -o /root/files/images/k8sall.tar $images_list
