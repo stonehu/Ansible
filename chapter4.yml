@@ -1,0 +1,372 @@
+- name: Install Docker
+  hosts: k8sall
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Install Docker
+      shell: |
+         tar -zxvf /root/files/docker/docker-27.1.1.tgz -C /root/files/docker/
+         tar -zxvf /root/files/docker/cri-dockerd-0.3.14.amd64.tgz -C /root/files/docker/
+         tar -zxvf /root/files/docker/nerdctl-1.7.1-linux-amd64.tar.gz -C /root/files/docker/
+         cp /root/files/docker/docker/* /usr/bin/
+         cp /root/files/docker/docker/* /usr/local/sbin/
+         cp /root/files/docker/cri-dockerd/cri-dockerd /usr/bin/
+         cp /root/files/docker/cri-dockerd/cri-dockerd /usr/local/sbin/
+         cp /root/files/docker/nerdctl /usr/local/sbin/
+         cp /root/files/docker/nerdctl /usr/bin
+         chmod +x /usr/bin/cri-dockerd
+         chmod +x /usr/local/sbin/cri-dockerd
+         touch /etc/systemd/system/containerd.service
+         touch /etc/systemd/system/docker.service
+         touch /etc/systemd/system/docker.socket 
+         touch /usr/lib/systemd/system/cri-docker.service
+         touch /usr/lib/systemd/system/cri-docker.socket 
+
+    - name: Create Containerd Service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/containerd.service
+        content: |
+          [Unit]
+          Description=containerd container runtime
+          Documentation=https://containerd.io
+          After=network.target local-fs.target
+          [Service]
+          ExecStartPre=-/sbin/modprobe overlay
+          ExecStart=/usr/bin/containerd
+          Type=notify
+          Delegate=yes
+          KillMode=process
+          Restart=always
+          RestartSec=5
+          LimitNPROC=infinity
+          LimitCORE=infinity
+          LimitNOFILE=1048576
+          TasksMax=infinity
+          OOMScoreAdjust=-999
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: '0644'
+    
+    - name: Create Docker Service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/docker.service
+        content: |
+          [Unit]
+          Description=Docker Application Container Engine
+          Documentation=https://docs.docker.com
+          After=network-online.target firewalld.service cri-docker.service docker.socket containerd.service
+          Wants=network-online.target
+          Requires=docker.socket containerd.service
+          [Service]
+          Type=notify
+          ExecStart=/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock
+          ExecReload=/bin/kill -s HUP $MAINPID
+          TimeoutSec=0
+          RestartSec=2
+          Restart=always
+          StartLimitBurst=3
+          StartLimitInterval=60s
+          LimitNOFILE=infinity
+          LimitNPROC=infinity
+          LimitCORE=infinity
+          TasksMax=infinity
+          Delegate=yes
+          KillMode=process
+          OOMScoreAdjust=-500
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: '0644'    
+
+    - name: Create Docker Socket
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/docker.socket 
+        content: |
+          [Unit]
+          Description=Docker Socket for the API
+          [Socket]
+          ListenStream=/var/run/docker.sock
+          SocketMode=0660
+          SocketUser=root
+          SocketGroup=docker
+          [Install]
+          WantedBy=sockets.target
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create CRI-Docker Service
+      ansible.builtin.copy:
+        dest: /usr/lib/systemd/system/cri-docker.service 
+        content: |
+          [Unit]
+          Description=CRI Interface for Docker Application Container Engine
+          Documentation=https://docs.mirantis.com
+          After=network-online.target firewalld.service docker.service
+          Wants=network-online.target
+          Requires=cri-docker.socket
+          [Service]
+          Type=notify
+          ExecStart=/usr/bin/cri-dockerd --network-plugin=cni --pod-infra-container-image=registry.aliyuncs.com/google_containers/pause:3.9
+          ExecReload=/bin/kill -s HUP $MAINPID
+          TimeoutSec=0
+          RestartSec=2
+          Restart=always
+          StartLimitBurst=3
+          StartLimitInterval=60s
+          LimitNOFILE=infinity
+          LimitNPROC=infinity
+          LimitCORE=infinity
+          TasksMax=infinity
+          Delegate=yes
+          KillMode=process
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create CRI-Docker Socket
+      ansible.builtin.copy:
+        dest: /usr/lib/systemd/system/cri-docker.socket
+        content: |
+          [Unit]
+          Description=CRI Docker Socket for the API
+          PartOf=cri-docker.service
+          [Socket]
+          ListenStream=%t/cri-dockerd.sock
+          SocketMode=0660
+          SocketUser=root
+          SocketGroup=docker
+          [Install]
+          WantedBy=sockets.target
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create Docker daemon.json
+      shell: |
+        mkdir -p /etc/docker
+        touch /etc/docker/daemon.json
+    
+    - name: Copy JSON content to a file
+      copy:
+        content: |
+          {
+            "registry-mirrors": [
+              "https://docker.anyhub.us.kg",
+              "https://dockerhub.icu",
+              "https://docker.awsl9527.cn"
+            ],
+            "insecure-registries": ["https://192.168.1.137","quay.io","https://vmhub.test.com"],
+            "exec-opts": ["native.cgroupdriver=systemd"],
+            "max-concurrent-downloads": 10,
+            "log-driver": "json-file",
+            "log-level": "warn",
+            "log-opts": {
+              "max-size": "10m",
+              "max-file": "3"
+              },
+            "data-root": "/var/lib/docker"
+          }
+        dest: /etc/docker/daemon.json
+
+    - name: Start Docker
+      shell: |
+        groupadd docker
+        systemctl daemon-reload
+        systemctl enable --now containerd.service
+        systemctl enable --now docker.socket
+        systemctl enable --now docker.service
+        systemctl enable --now cri-docker.service
+    
+    - name: All Node Import Docker Images
+      shell: |
+        docker load -i /root/files/images/all_images.tar
+    
+
+- name: Insall Harbor
+  hosts: k8s-nfs
+  remote_user: root
+  become: yes
+  gather_facts: no
+
+  tasks:
+    - name: Install Docker Compose
+      ansible.builtin.raw: |
+        curl -L http://192.168.1.3/source/docker-compose/2.11.2/docker-compose  > /usr/local/bin/docker-compose
+        chmod +x /usr/local/bin/docker-compose
+
+    - name: Create symlink for Docker Compose
+      ansible.builtin.file:
+        src: /usr/local/bin/docker-compose
+        dest: /usr/bin/docker-compose
+        state: link
+
+    - name: Download Harbor
+      shell: |
+         cd /opt/
+         wget http://192.168.1.3/source/Harbor/harbor-offline-installer-v2.10.3.tgz
+
+    - name: Extract Harbor
+      ansible.builtin.unarchive:
+        src: /opt/harbor-offline-installer-v2.10.3.tgz
+        dest: /opt/
+        remote_src: yes
+            
+    - name: Copy Harbor File
+      ansible.builtin.copy:
+        src: /opt/harbor/harbor.yml.tmpl 
+        dest: /opt/harbor/harbor.yml
+        remote_src: yes
+
+    - name: Create Harbor Fordel
+      ansible.builtin.raw: |
+        mkdir -p /data/cert /data/db /data/log
+        mkdir -p /data/db/cert
+        
+    - name: Generate a private key
+      ansible.builtin.raw: |
+        openssl genrsa -out /data/cert/server.key 4096
+
+    - name: Generate a certificate signing request (CSR)
+      ansible.builtin.raw: |
+        openssl req -sha512 -new \
+        -subj "/C=CN/ST=Beijing/L=Beijing/O='TEST.CO,LTD'/OU=test/CN='vmhub.test.com'" \
+        -key /data/cert/server.key \
+        -out /data/cert/server.csr
+
+    - name: Generate an x509 v3 extension file
+      ansible.builtin.copy:
+        content: |
+          authorityKeyIdentifier=keyid,issuer
+          basicConstraints=CA:FALSE
+          keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+          extendedKeyUsage = serverAuth
+          subjectAltName = @alt_names
+
+          [alt_names]
+          DNS.1=test.com
+        dest: /data/cert/v3.ext
+
+    - name: Generate a self-signed certificate
+      ansible.builtin.raw: |
+        openssl x509 -req -sha512 -days 3650 \
+        -extfile /data/cert/v3.ext \
+        -signkey /data/cert/server.key \
+        -in /data/cert/server.csr \
+        -out /data/cert/server.crt
+
+    - name: Replace reg.mydomain.com with ip
+      ansible.builtin.replace:
+        path: /opt/harbor/harbor.yml
+        regexp: 'reg\.mydomain\.com'
+        replace: 'vmhub.test.com'
+
+    - name: Comment out http
+      ansible.builtin.replace:
+        path: /opt/harbor/harbor.yml
+        regexp: 'http:'
+        replace: '#http:'
+
+    - name: Comment out port 80
+      ansible.builtin.replace:
+        path: /opt/harbor/harbor.yml
+        regexp: 'port: 80'
+        replace: '#port: 80'
+
+    - name: Update Harbor Cert configuration 1
+      ansible.builtin.raw: |
+        sed -i '17s|.*|  # certificate: /your/certificate/path|' /opt/harbor/harbor.yml
+        sed -i '18s|.*|  # private_key: /your/private/key/path|' /opt/harbor/harbor.yml
+        sed -i '19i\  private_key: /data/cert/server.key' /opt/harbor/harbor.yml
+        sed -i '20i\  certificate: /data/cert/server.crt' /opt/harbor/harbor.yml
+    
+    - name: Copy server.key
+      ansible.builtin.copy: 
+        src: /data/cert/server.key
+        dest: /data/db/cert/server.key
+        remote_src: yes
+        force: yes
+    - name: Copy server.crt
+      ansible.builtin.copy: 
+        src: /data/cert/server.crt
+        dest: /data/db/cert/server.crt
+        remote_src: yes
+        force: yes
+
+    - name: Replace Harbor12345 with P@ssw0rd
+      ansible.builtin.replace:
+        path: /opt/harbor/harbor.yml
+        regexp: 'Harbor12345'
+        replace: 'P@ssw0rd'
+
+    - name: Replace /data with /data/db
+      ansible.builtin.replace:
+        path: /opt/harbor/harbor.yml
+        regexp: '/data'
+        replace: '/data/db'
+
+    - name: Replace /var/log/harbor with /data/log
+      ansible.builtin.replace:
+        path: /opt/harbor/harbor.yml
+        regexp: '/var/log/harbor'
+        replace: '/data/log'
+    - name: check
+      ansible.builtin.command: |
+        cmd:  "sed -i 's/data/db/cert/data/cert/g' /opt/harbor/harbor.yml"
+      failed_when: false
+      
+    - name: Init Harbor
+      ansible.builtin.raw: |
+        sh /opt/harbor/install.sh
+
+- name: Docker Login Registries
+  hosts: k8sall
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Docker Login Registries
+      shell: | 
+        docker login -u admin -p P@ssw0rd https://vmhub.test.com
+        cat ~/.docker/config.json
+      register: login_status
+    
+    - name: Print Docker Login Status
+      debug:
+        var: login_status.stdout 
+
+- name: Install NFS 
+  hosts: k8s-nfs
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Install NFS
+      shell: | 
+        yum -y install nfs-utils
+        mkdir -p /data/nfs_share
+        chmod -R 777 /data/nfs_share
+        touch /etc/exports
+        echo "/data/nfs_share *(rw,no_root_squash,sync)" /etc/exports
+        exportfs -r 
+        systemctl restart rpcbind && systemctl enable rpcbind
+        systemctl restart nfs && systemctl enable nfs
+

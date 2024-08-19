@@ -1,0 +1,237 @@
+- name: Create Controller-Manager & Kube-Scheduler Service
+  hosts: k8s-master
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create Controller-Manager Service
+      ansible.builtin.copy:
+        dest: /usr/lib/systemd/system/kube-controller-manager.service 
+        content: |
+          [Unit]
+          Description=Kubernetes Controller Manager
+          Documentation=https://github.com/kubernetes/kubernetes
+
+          [Service]
+          EnvironmentFile=-/etc/kubernetes/kube-controller-manager.conf
+          ExecStart=/usr/local/bin/kube-controller-manager $KUBE_CONTROLLER_MANAGER_OPTS
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create kube-controller-manager.conf 
+      ansible.builtin.copy:
+        dest: /etc/kubernetes/kube-controller-manager.conf
+        content: |
+          KUBE_CONTROLLER_MANAGER_OPTS="  --secure-port=10257 \
+            --bind-address=127.0.0.1 \
+            --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig \
+            --service-cluster-ip-range=10.96.0.0/16 \
+            --cluster-name=kubernetes \
+            --cluster-signing-cert-file=/etc/kubernetes/ssl/ca.pem \
+            --cluster-signing-key-file=/etc/kubernetes/ssl/ca-key.pem \
+            --allocate-node-cidrs=true \
+            --cluster-cidr=10.244.0.0/16 \
+            --cluster-signing-duration=876000h \
+            --root-ca-file=/etc/kubernetes/ssl/ca.pem \
+            --service-account-private-key-file=/etc/kubernetes/ssl/ca-key.pem \
+            --leader-elect=true \
+            --feature-gates=RotateKubeletServerCertificate=true \
+            --controllers=*,bootstrapsigner,tokencleaner \
+            --horizontal-pod-autoscaler-sync-period=10s \
+            --tls-cert-file=/etc/kubernetes/ssl/kube-controller-manager.pem \
+            --tls-private-key-file=/etc/kubernetes/ssl/kube-controller-manager-key.pem \
+            --use-service-account-credentials=true \
+            --v=2" 
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create Kube-Scheduler Service
+      ansible.builtin.copy:
+        dest: /usr/lib/systemd/system/kube-scheduler.service
+        content: |
+          [Unit]
+          Description=Kubernetes Scheduler
+          Documentation=https://github.com/kubernetes/kubernetes
+
+          [Service]
+          EnvironmentFile=-/etc/kubernetes/kube-scheduler.conf
+          ExecStart=/usr/local/bin/kube-scheduler $KUBE_SCHEDULER_OPTS
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create Kube-Scheduler Conf
+      ansible.builtin.copy:
+        dest: /etc/kubernetes/kube-scheduler.conf
+        content: |  
+          KUBE_SCHEDULER_OPTS="--bind-address=127.0.0.1 \
+          --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig \
+          --leader-elect=true \
+          --v=2"
+        owner: root
+        group: root
+        mode: '0644'
+
+- name: Create Controller-Manager Certs
+  hosts: k8s-master1
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create Controller-Manager JSON File
+      copy:
+        content: |
+          {
+              "CN": "system:kube-controller-manager",
+              "key": {
+                  "algo": "rsa",
+                  "size": 2048
+              },
+              "hosts": [
+                "127.0.0.1",
+                "192.168.1.130",
+                "192.168.1.131",
+                "192.168.1.132",
+                "192.168.1.133"
+              ],
+              "names": [
+                {
+                  "C": "CN",
+                  "ST": "Beijing",
+                  "L": "Beijing",
+                  "O": "system:kube-controller-manager",
+                  "OU": "system"
+                }
+              ]
+          }
+        dest: /etc/ssl/kube-controller-manager-csr.json
+
+    - name: Create Kubectl Certificate
+      shell: |
+        cfssl gencert -ca=/etc/ssl/ca.pem -ca-key=/etc/ssl/ca-key.pem -config=/etc/ssl/ca-config.json -profile=kubernetes /etc/ssl/kube-controller-manager-csr.json | cfssljson -bare kube-controller-manager
+        kubectl config set-cluster kubernetes --certificate-authority=/etc/ssl/ca.pem --embed-certs=true --server=https://192.168.1.130:8443 --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
+        kubectl config set-credentials system:kube-controller-manager --client-certificate=/etc/ssl/kube-controller-manager.pem --client-key=/etc/ssl/kube-controller-manager-key.pem --embed-certs=true --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
+        kubectl config set-context system:kube-controller-manager --cluster=kubernetes --user=system:kube-controller-manager --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
+        kubectl config use-context system:kube-controller-manager --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
+      args:
+        chdir: /etc/ssl 
+
+    - name: Distribution kube-controller-manager Certificate  
+      shell: |
+        for i in $(cat /etc/hosts|grep master|awk '{print $1}');do scp /etc/ssl/kube-controller-manager*.pem root@$i:/etc/kubernetes/ssl/;done
+        for i in $(cat /etc/hosts|grep master|awk '{print $1}');do scp /etc/kubernetes/kube-controller-manager.kubeconfig root@$i:/etc/kubernetes/;done
+
+- name: Enable kube-controller-manager Service
+  hosts: k8s-master
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Enable kube-controller-manager Service
+      shell: |
+        systemctl daemon-reload 
+        systemctl enable --now kube-controller-manager
+
+    - name: Check kube-controller-manager Statuses
+      shell: systemctl status kube-controller-manager
+      register: controller_status
+
+    - name: Print Check kube-controller-manager Statuses
+      debug:
+        var: controller_status.stdout 
+
+- name: Create Kube-Scheduler Certs
+  hosts: k8s-master1
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create Kube-Scheduler JSON File
+      copy:
+        content: |
+          {
+              "CN": "system:kube-scheduler",
+              "hosts": [
+                "127.0.0.1",
+                "192.168.1.130",
+                "192.168.1.131",
+                "192.168.1.132",
+                "192.168.1.133"
+              ],
+              "key": {
+                  "algo": "rsa",
+                  "size": 2048
+              },
+              "names": [
+                {
+                  "C": "CN",
+                  "ST": "Beijing",
+                  "L": "Beijing",
+                  "O": "system:kube-scheduler",
+                  "OU": "system"
+                }
+              ]
+          }
+        dest: /etc/ssl/kube-scheduler-csr.json
+
+    - name: Create Kube-Scheduler Certificate
+      shell: |
+        cfssl gencert -ca=/etc/ssl/ca.pem -ca-key=/etc/ssl/ca-key.pem -config=/etc/ssl/ca-config.json -profile=kubernetes /etc/ssl/kube-scheduler-csr.json | cfssljson -bare kube-scheduler
+        kubectl config set-cluster kubernetes --certificate-authority=/etc/ssl/ca.pem --embed-certs=true --server=https://192.168.1.130:8443 --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
+        kubectl config set-credentials system:kube-scheduler --client-certificate=/etc/ssl/kube-scheduler.pem --client-key=/etc/ssl/kube-scheduler-key.pem --embed-certs=true --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
+        kubectl config set-context system:kube-scheduler --cluster=kubernetes --user=system:kube-scheduler --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
+        kubectl config use-context system:kube-scheduler --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
+      args:
+        chdir: /etc/ssl 
+     
+    - name: Distribution Kube-Scheduler Certificate  
+      shell: |
+        for i in $(cat /etc/hosts|grep master|awk '{print $1}');do scp /etc/ssl/kube-scheduler*.pem root@$i:/etc/kubernetes/ssl/;done
+        for i in $(cat /etc/hosts|grep master|awk '{print $1}');do scp /etc/kubernetes/kube-scheduler.kubeconfig root@$i:/etc/kubernetes/;done
+      args:
+        chdir: /etc/ssl 
+
+- name: Enable Kube-Scheduler Service
+  hosts: k8s-master
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Enable Kube-Scheduler Service
+      shell: |
+        systemctl daemon-reload
+        systemctl enable --now kube-scheduler
+
+ 

@@ -1,0 +1,110 @@
+- name: Set K8S Client Env
+  hosts: temporary
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    
+    - name: Add dockerhub to hosts
+      shell: echo -n "192.168.1.137 vmhub.test.com" >>/etc/hosts
+    
+    - name: Install NTP Synchronization Time
+      shell: |
+        yum -y install ntpdate
+        yum -y install wget net-tools vim ipvsadm ipset sysstat conntrack libseccomp yum-utils nfs-utils
+        (crontab -l 2>/dev/null | grep -q '/usr/sbin/ntpdate time1.aliyun.com') || (crontab -l 2>/dev/null; echo "0 * * * * /usr/sbin/ntpdate time1.aliyun.com") | crontab -
+    
+    - name: Synchronize /root/file directory to destination
+      ansible.builtin.copy:
+        src: /root/files/
+        dest: /root/files/
+
+    - name: Install Kernel Packages to All Nodes
+      shell: |
+        yum -y localinstall /root/files/kernel/kernel-ml*
+        grub2-set-default 0
+        grub2-mkconfig -o /etc/grub2.cfg
+        grubby --args='user_namespace.enable=1' --update-kernel='$(grubby --default-kernel)'
+        grubby --default-kernel
+
+    - name: Append PAM limits to /etc/security/limits.conf
+      shell: |
+        sed -i '$a\* soft nofile 655360' /etc/security/limits.conf
+        sed -i '$a\* hard nofile 131072' /etc/security/limits.conf
+        sed -i '$a\* soft nproc 655350' /etc/security/limits.conf
+        sed -i '$a\* hard nproc 655350' /etc/security/limits.conf
+        sed -i '$a\* soft memlock unlimited' /etc/security/limits.conf
+        sed -i '$a\* hard memlock unlimited' /etc/security/limits.conf
+
+    - name: Append IPVS modules to /etc/modules-load.d/ipvs.conf
+      ansible.builtin.blockinfile:
+        path: /etc/modules-load.d/ipvs.conf
+        block: |
+          ip_vs
+          ip_vs_lc
+          ip_vs_wlc
+          ip_vs_rr
+          ip_vs_wrr
+          ip_vs_1blc
+          ip_vs_lblcr
+          ip_vs_dh
+          ip_vs_sh
+          ip_vs_fo
+          ip_vs_nq
+          ip_vs_sed
+          ip_vs_ftp
+          ip_vs_sh
+          nf_conntrack
+          ip_tables
+          ip_set
+          xt_set
+          ipt_set
+          ipt_rpfilter
+          ipt_REJECT
+          ipip
+        create: yes
+
+    - name: Append sysctl parameters to /etc/sysctl.d/k8s.conf
+      ansible.builtin.blockinfile:
+        path: /etc/sysctl.d/k8s.conf
+        block: |
+          net.ipv4.ip_forward = 1
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv6.conf.all.disable_ipv6 = 1
+          fs.may_detach_mounts = 1
+          vm.overcommit_memory = 1
+          vm.panic_on_oom = 0
+          fs.inotify.max_user_watches = 89100
+          fs.file-max = 52706963
+          fs.nr_open = 52706963
+          net.netfilter.nf_conntrack_max = 2310720
+          net.ipv4.tcp_keepalive_time = 600
+          net.ipv4.tcp_keepalive_probes = 3
+          net.ipv4.tcp_keepalive_intvl = 15
+          net.ipv4.tcp_max_tw_buckets = 36000
+          net.ipv4.tcp_tw_reuse = 1
+          net.ipv4.tcp_max_orphans = 327680
+          net.ipv4.tcp_orphan_retries = 3
+          net.ipv4.tcp_syncookies = 1
+          net.ipv4.tcp_max_syn_backlog = 16384
+          net.ipv4.ip_conntrack_max = 65536
+          net.ipv4.tcp_timestamps = 0
+          net.core.somaxconn = 16384
+        create: yes
+
+    - name: Restart System Configure
+      shell: |
+        sysctl --system
+        systemctl enable --now systemd-modules-load.service
+        modprobe ip_vs && modprobe ip_vs_rr && modprobe ip_vs_wrr && modprobe ip_vs_sh && modprobe nf_conntrack
+        
+    - name: Reboot the machine
+      ansible.builtin.reboot:
+        reboot_timeout: 60
+
+    

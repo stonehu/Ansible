@@ -1,0 +1,345 @@
+- name: Set K8S Application 
+  hosts: k8s-master
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create Kubernetes Folder
+      shell: |
+        mkdir -p /etc/kubernetes
+        mkdir -p /etc/kubernetes/ssl     
+        mkdir -p /var/log/kubernetes 
+        tar -zxvf /root/files/kubernetes/kubernetes-server-linux-amd64.tar.gz -C  /root/files/kubernetes/
+        cp /root/files/kubernetes/kubernetes/server/bin/{kubectl,kube-apiserver,kube-scheduler,kube-controller-manager,kubelet,kube-proxy} /usr/local/bin/
+    
+    - name: Create K8S-Master Apiserver Service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/kube-apiserver.service
+        content: |
+          [Unit]
+          Description=Kubernetes API Server
+          Documentation=https://github.com/kubernetes/kubernetes
+          [Service]
+          EnvironmentFile=/etc/kubernetes/kube-apiserver.conf
+          ExecStart=/usr/local/bin/kube-apiserver $KUBE_APISERVER_OPTS
+          Restart=on-failure
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: '0644'
+
+- name: Create Apiserver Certs
+  hosts: k8s-master1
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create ApiServer JSON File
+      copy:
+        content: |
+          {
+          "CN": "kubernetes",
+            "hosts": [
+              "127.0.0.1",
+              "192.168.1.130",
+              "192.168.1.131",
+              "192.168.1.132",
+              "192.168.1.133",
+              "10.96.0.1",
+              "kubernetes",
+              "kubernetes.default",
+              "kubernetes.default.svc",
+              "kubernetes.default.svc.cluster",
+              "kubernetes.default.svc.cluster.local"
+            ],
+            "key": {
+              "algo": "rsa",
+              "size": 2048
+            },
+            "names": [
+              {
+                "C": "CN",
+                "ST": "Beijing",
+                "L": "Beijing",
+                "O": "kubemsb",
+                "OU": "CN"
+              }
+            ]
+          }
+        dest: /etc/ssl/kube-apiserver-csr.json
+    
+    - name: Create Apiserver Certificate
+      shell: |
+        cfssl gencert -ca=/etc/ssl/ca.pem -ca-key=/etc/ssl/ca-key.pem -config=/etc/ssl/ca-config.json -profile=kubernetes /etc/ssl/kube-apiserver-csr.json | cfssljson -bare kube-apiserver
+      args:
+        chdir: /etc/ssl
+
+    - name: Generate token.csv for kubelet-bootstrap
+      shell: |
+        echo "$(head -c 16 /dev/urandom | od -An -t x | tr -d ' '),kubelet-bootstrap,10001,\"system:kubelet-bootstrap\"" > /etc/ssl/token.csv
+      args:
+        chdir: /etc/ssl
+    
+    - name: Create K8S-Master1 apiserver.conf 
+      ansible.builtin.copy:
+        dest: /etc/kubernetes/kube-apiserver.conf
+        content: |
+          KUBE_APISERVER_OPTS="--enable-admission-plugins=NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota \
+            --anonymous-auth=false \
+            --bind-address=192.168.1.131 \
+            --advertise-address=192.168.1.131 \
+            --secure-port=6443 \
+            --authorization-mode=Node,RBAC \
+            --runtime-config=api/all=true \
+            --enable-bootstrap-token-auth \
+            --service-cluster-ip-range=10.96.0.0/16 \
+            --token-auth-file=/etc/kubernetes/token.csv \
+            --service-node-port-range=30000-60000 \
+            --tls-cert-file=/etc/kubernetes/ssl/kube-apiserver.pem  \
+            --tls-private-key-file=/etc/kubernetes/ssl/kube-apiserver-key.pem \
+            --client-ca-file=/etc/kubernetes/ssl/ca.pem \
+            --kubelet-client-certificate=/etc/kubernetes/ssl/kube-apiserver.pem \
+            --kubelet-client-key=/etc/kubernetes/ssl/kube-apiserver-key.pem \
+            --service-account-key-file=/etc/kubernetes/ssl/ca-key.pem \
+            --service-account-signing-key-file=/etc/kubernetes/ssl/ca-key.pem  \
+            --service-account-issuer=api \
+            --etcd-cafile=/etc/etcd/ssl/ca.pem \
+            --etcd-certfile=/etc/etcd/ssl/etcd.pem \
+            --etcd-keyfile=/etc/etcd/ssl/etcd-key.pem \
+            --etcd-servers=https://192.168.1.131:2379,https://192.168.1.132:2379,https://192.168.1.133:2379 \
+            --allow-privileged=true \
+            --apiserver-count=3 \
+            --audit-log-maxage=30 \
+            --audit-log-maxbackup=3 \
+            --audit-log-maxsize=100 \
+            --audit-log-path=/var/log/kube-apiserver-audit.log \
+            --event-ttl=1h \
+            --v=4"
+        owner: root
+        group: root
+        mode: '0644'
+    
+- name: K8S-Master2 Create ApiServer Service
+  hosts: k8s-master2
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create K8S-Master2 apiserver.conf 
+      ansible.builtin.copy:
+        dest: /etc/kubernetes/kube-apiserver.conf
+        content: |
+          KUBE_APISERVER_OPTS="--enable-admission-plugins=NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota \
+            --anonymous-auth=false \
+            --bind-address=192.168.1.132 \
+            --advertise-address=192.168.1.132 \
+            --secure-port=6443 \
+            --authorization-mode=Node,RBAC \
+            --runtime-config=api/all=true \
+            --enable-bootstrap-token-auth \
+            --service-cluster-ip-range=10.96.0.0/16 \
+            --token-auth-file=/etc/kubernetes/token.csv \
+            --service-node-port-range=30000-60000 \
+            --tls-cert-file=/etc/kubernetes/ssl/kube-apiserver.pem  \
+            --tls-private-key-file=/etc/kubernetes/ssl/kube-apiserver-key.pem \
+            --client-ca-file=/etc/kubernetes/ssl/ca.pem \
+            --kubelet-client-certificate=/etc/kubernetes/ssl/kube-apiserver.pem \
+            --kubelet-client-key=/etc/kubernetes/ssl/kube-apiserver-key.pem \
+            --service-account-key-file=/etc/kubernetes/ssl/ca-key.pem \
+            --service-account-signing-key-file=/etc/kubernetes/ssl/ca-key.pem  \
+            --service-account-issuer=api \
+            --etcd-cafile=/etc/etcd/ssl/ca.pem \
+            --etcd-certfile=/etc/etcd/ssl/etcd.pem \
+            --etcd-keyfile=/etc/etcd/ssl/etcd-key.pem \
+            --etcd-servers=https://192.168.1.131:2379,https://192.168.1.132:2379,https://192.168.1.133:2379 \
+            --allow-privileged=true \
+            --apiserver-count=3 \
+            --audit-log-maxage=30 \
+            --audit-log-maxbackup=3 \
+            --audit-log-maxsize=100 \
+            --audit-log-path=/var/log/kube-apiserver-audit.log \
+            --event-ttl=1h \
+            --v=4"
+        owner: root
+        group: root
+        mode: '0644'
+    
+- name: K8S-Master3 Create ApiServer Service
+  hosts: k8s-master3
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create K8S-Master3 apiserver.conf 
+      ansible.builtin.copy:
+        dest: /etc/kubernetes/kube-apiserver.conf
+        content: |
+          KUBE_APISERVER_OPTS="--enable-admission-plugins=NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota \
+            --anonymous-auth=false \
+            --bind-address=192.168.1.133 \
+            --advertise-address=192.168.1.133 \
+            --secure-port=6443 \
+            --authorization-mode=Node,RBAC \
+            --runtime-config=api/all=true \
+            --enable-bootstrap-token-auth \
+            --service-cluster-ip-range=10.96.0.0/16 \
+            --token-auth-file=/etc/kubernetes/token.csv \
+            --service-node-port-range=30000-60000 \
+            --tls-cert-file=/etc/kubernetes/ssl/kube-apiserver.pem  \
+            --tls-private-key-file=/etc/kubernetes/ssl/kube-apiserver-key.pem \
+            --client-ca-file=/etc/kubernetes/ssl/ca.pem \
+            --kubelet-client-certificate=/etc/kubernetes/ssl/kube-apiserver.pem \
+            --kubelet-client-key=/etc/kubernetes/ssl/kube-apiserver-key.pem \
+            --service-account-key-file=/etc/kubernetes/ssl/ca-key.pem \
+            --service-account-signing-key-file=/etc/kubernetes/ssl/ca-key.pem  \
+            --service-account-issuer=api \
+            --etcd-cafile=/etc/etcd/ssl/ca.pem \
+            --etcd-certfile=/etc/etcd/ssl/etcd.pem \
+            --etcd-keyfile=/etc/etcd/ssl/etcd-key.pem \
+            --etcd-servers=https://192.168.1.131:2379,https://192.168.1.132:2379,https://192.168.1.133:2379 \
+            --allow-privileged=true \
+            --apiserver-count=3 \
+            --audit-log-maxage=30 \
+            --audit-log-maxbackup=3 \
+            --audit-log-maxsize=100 \
+            --audit-log-path=/var/log/kube-apiserver-audit.log \
+            --event-ttl=1h \
+            --v=4"
+        owner: root
+        group: root
+        mode: '0644'
+
+- name: Distribution ApiServer Certificate
+  hosts: k8s-master1
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Distribution ApiServer Certificate  
+      shell: |
+         for i in $(cat /etc/hosts|grep master|awk '{print $1}');do scp /etc/ssl/ca*.pem root@$i:/etc/kubernetes/ssl/;done
+         for i in $(cat /etc/hosts|grep master|awk '{print $1}');do scp /etc/ssl/kube-apiserver*.pem root@$i:/etc/kubernetes/ssl/;done
+         for i in $(cat /etc/hosts|grep master|awk '{print $1}');do scp /etc/ssl/token.csv root@$i:/etc/kubernetes/;done
+
+- name: Enable K8S-Master ApiServer
+  hosts: k8s-master
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Enable K8S-Master ApiServer
+      shell: |
+       systemctl daemon-reload
+       systemctl enable --now kube-apiserver
+
+    - name: ApiServer Status
+      shell: systemctl status kube-apiserver
+      register: apiserver_status
+
+    - name: Print ApiServer Status
+      debug:
+        var: apiserver_status.stdout 
+
+- name: Create Kubectl Certs
+  hosts: k8s-master1
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3   
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create Kubectl JSON File
+      copy:
+        content: |
+          {
+            "CN": "admin",
+            "hosts": [],
+            "key": {
+              "algo": "rsa",
+              "size": 2048
+            },
+            "names": [
+              {
+                "C": "CN",
+                "ST": "Beijing",
+                "L": "Beijing",
+                "O": "system:masters",             
+                "OU": "system"
+              }
+            ]
+          }
+        dest: /etc/ssl/admin-csr.json
+
+    - name: Create Kubectl Certificate
+      shell: |
+        cfssl gencert -ca=/etc/ssl/ca.pem -ca-key=/etc/ssl/ca-key.pem -config=/etc/ssl/ca-config.json -profile=kubernetes /etc/ssl/admin-csr.json | cfssljson -bare admin
+        cp admin*.pem /etc/kubernetes/ssl/
+      args:
+        chdir: /etc/ssl  
+    
+    - name: Create Kube.config
+      shell: |
+        kubectl config set-cluster kubernetes --certificate-authority=/etc/ssl/ca.pem --embed-certs=true --server=https://192.168.1.130:8443 --kubeconfig=/etc/kubernetes/kube.config
+        sleep 1
+        kubectl config set-credentials admin --client-certificate=/etc/ssl/admin.pem --client-key=/etc/ssl/admin-key.pem --embed-certs=true --kubeconfig=/etc/kubernetes/kube.config
+        sleep 1
+        kubectl config set-context kubernetes --cluster=kubernetes --user=admin --kubeconfig=/etc/kubernetes/kube.config
+        sleep 1
+        kubectl config use-context kubernetes --kubeconfig=/etc/kubernetes/kube.config
+        sleep 1
+        mkdir /root/.kube -p
+        cp /etc/kubernetes/kube.config /root/.kube/config
+        cp /etc/kubernetes/kube.config /etc/kubernetes/admin.conf
+        kubectl create clusterrolebinding kube-apiserver:kubelet-apis --clusterrole=system:kubelet-api-admin --user kubernetes --kubeconfig=/root/.kube/config
+        export KUBECONFIG=/root/.kube/config
+
+    - name: Check cluster-info
+      shell: kubectl cluster-info
+      register: cluster_info
+
+    - name: Check Component Statuses
+      shell: kubectl get componentstatuses
+      register: component_status
+
+    - name: Check NameSpaces
+      shell: kubectl get all --all-namespaces
+      register: check_namespace
+
+    - name: Print Check cluster-info
+      debug:
+        var: cluster_info.stdout 
+    
+    - name: Print Check NameSpaces
+      debug:
+        var: component_status.stdout 
+    
+    - name: Print Check NameSpaces
+      debug:
+        var: check_namespace.stdout 

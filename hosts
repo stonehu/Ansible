@@ -1,0 +1,39 @@
+[vcenter]
+192.168.1.6 ansible_user=administrator@test.com ansible_password=P@ssw0rd
+
+[localhost]
+192.168.1.20  ansible_user=root ansible_password=P@ssw0rd
+
+[old]
+192.168.1.53 ansible_user=root ansible_password=P@ssw0rd
+192.168.1.190 ansible_user=root ansible_password=P@ssw0rd
+192.168.1.130 ansible_user=root ansible_password=P@ssw0rd
+192.168.1.11 ansible_user=root ansible_password=P@ssw0rd
+192.168.1.247 ansible_user=root ansible_password=P@ssw0rd
+192.168.1.151 ansible_user=root ansible_password=P@ssw0rd
+
+[new]
+k8s-master1 ansible_host=192.168.1.131 ansible_user=root ansible_password=P@ssw0rd
+k8s-master2 ansible_host=192.168.1.132 ansible_user=root ansible_password=P@ssw0rd
+k8s-master3 ansible_host=192.168.1.133 ansible_user=root ansible_password=P@ssw0rd
+k8s-node1 ansible_host=192.168.1.134 ansible_user=root ansible_password=P@ssw0rd
+k8s-node2 ansible_host=192.168.1.135 ansible_user=root ansible_password=P@ssw0rd
+k8s-node3 ansible_host=192.168.1.136 ansible_user=root ansible_password=P@ssw0rd
+
+[k8s-master]
+k8s-master1 ansible_host=192.168.1.131 ansible_user=root ansible_password=P@ssw0rd
+k8s-master2 ansible_host=192.168.1.132 ansible_user=root ansible_password=P@ssw0rd
+k8s-master3 ansible_host=192.168.1.133 ansible_user=root ansible_password=P@ssw0rd
+[k8s-client]
+k8s-node1 ansible_host=192.168.1.134 ansible_user=root ansible_password=P@ssw0rd
+k8s-node2 ansible_host=192.168.1.135 ansible_user=root ansible_password=P@ssw0rd
+k8s-node3 ansible_host=192.168.1.136 ansible_user=root ansible_password=P@ssw0rd
+
+
+[k8sall]
+k8s-master1 ansible_host=192.168.1.131 ansible_user=root ansible_password=P@ssw0rd
+k8s-master2 ansible_host=192.168.1.132 ansible_user=root ansible_password=P@ssw0rd
+k8s-master3 ansible_host=192.168.1.133 ansible_user=root ansible_password=P@ssw0rd
+k8s-node1 ansible_host=192.168.1.134 ansible_user=root ansible_password=P@ssw0rd
+k8s-node2 ansible_host=192.168.1.135 ansible_user=root ansible_password=P@ssw0rd
+k8s-node3 ansible_host=192.168.1.136 ansible_user=root ansible_password=P@ssw0rd

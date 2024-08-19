@@ -1,0 +1,183 @@
+- name: Manage VMs in vCenter
+  hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: false
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3
+  vars_files:
+    - vars.yml
+  collections:
+    - community.vmware
+  tasks:
+    - name: Create VMs
+      community.vmware.vmware_guest:
+        hostname: '{{ vcenter_hostname }}' #本地主机hosts添加192.168.1.6   vmware.test.com 
+        username: '{{ vcenter_username }}'
+        password: '{{ vcenter_password }}'
+        datacenter: '{{ vcenter_datacenter }}'
+        folder: '{{ Destination_folder }}'
+        name: "{{ item.new_hostname }}"
+        template: '{{ create_vm_template }}'
+        guest_id: '{{ create_vm_guest_id }}'
+        esxi_hostname: '{{ create_vm_esxihost }}'
+        disk:
+          - size_gb: '{{ create_vm_gbsize }}'
+            type: '{{ create_vm_type }}'
+            datastore: '{{ create_vm_esxihosts_datastore }}'
+        hardware:
+          memory_mb: '{{ create_vm_memory_sizemb }}'
+          num_cpus: '{{ create_vm_cpu_core }}'
+          scsi: '{{ create_vm_disk_type }}'
+        networks:
+          - name: "{{ create_vm_network_select }}"
+            type: static
+            ip: "{{ item.new_ip }}"
+            netmask: "{{ item.new_netmask }}"
+            gateway: "{{ item.new_gateway }}"
+            start_connected: true
+        wait_for_ip_address: '{{ create_vm_waitforip }}'
+        wait_for_customization: '{{ create_vm_wait_for_customization }}'
+        validate_certs: '{{ vcenter_validate_certs }}'
+      register: create_vm_register
+      loop: "{{ servers }}"
+      loop_control:
+        label: "{{ item.new_hostname }}"
+      async: 3600
+      poll: 0
+
+    - name: Wait for all VM creation tasks to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 60
+      delay: 30
+      loop: "{{ create_vm_register.results }}"
+
+    - name: Query VM info
+      vmware_guest_info:
+        hostname: '{{ vcenter_hostname }}'
+        username: '{{ vcenter_username }}'
+        password: '{{ vcenter_password }}'
+        datacenter: '{{ vcenter_datacenter }}'
+        name: "{{ item.new_hostname }}"
+        validate_certs: '{{ vcenter_validate_certs }}'
+      register: vm_host_ip_info
+      loop: "{{ servers }}"
+      loop_control:
+        label: "{{ item.new_hostname }}"
+
+    - name: Pause for 20 seconds between each VM info query
+      pause:
+        seconds: 20
+      when: vm_host_ip_info is changed
+      loop: "{{ servers }}"
+      loop_control:
+        label: "{{ item.new_hostname }}"
+
+    - name: Set hostname and IP address as facts
+      set_fact:
+        vm_info: "{{ vm_info | default([]) + [{'hostname': item.instance.hw_name, 'ip': item.instance.hw_eth0.ipaddresses[0]}] }}"
+      loop: "{{ vm_host_ip_info.results }}"
+      loop_control:
+        label: "{{ item.instance.hw_name }}"
+      when: item.instance.hw_eth0 is defined and item.instance.hw_eth0.ipaddresses is defined
+
+    - name: Display extracted hostname and IP address
+      debug:
+        msg: "{{ item }}"
+      loop: "{{ vm_info }}"
+    
+    - name: Install sshpass on clients
+      shell: yum -y install sshpass 
+      delegate_to: "{{ item.new_ip }}"
+      loop: "{{ servers }}"
+
+- name: Disable Firewall && Selinux
+  hosts: temporary
+  become: yes
+  gather_facts: no
+  vars_files:
+    - vars.yml
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3
+  collections:
+    - ansible.builtin
+
+  tasks:
+    - name: Check firewall status
+      shell: systemctl stop firewalld && systemctl disable firewalld
+
+    - name: Check SELinux status
+      shell: sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
+
+    - name: Copy Network-Config To Dest
+      ansible.builtin.copy:
+        src: /etc/sysconfig/network-scripts/ifcfg-ens192
+        dest: /etc/sysconfig/network-scripts/ifcfg-ens192
+    
+    - name: Query Network-Config IP
+      shell: grep -oP '^IPADDR=\K.*' /etc/sysconfig/network-scripts/ifcfg-ens192
+      register: network_config_ip
+
+    - name: Get current IP address from config file
+      shell: grep -oP '^IPADDR=\K.*' /etc/sysconfig/network-scripts/ifcfg-ens192
+      register: current_ip
+      ignore_errors: yes
+
+    - name: Get current hostname
+      command: hostname
+      register: current_hostname
+
+    - name: Debug current hostname
+      debug:
+        msg: "Current Hostname: {{ current_hostname.stdout }}"
+
+    - name: Get current IP address from config file
+      shell: grep -oP '^IPADDR=\K.*' /etc/sysconfig/network-scripts/ifcfg-ens192
+      register: current_ip
+      ignore_errors: yes
+
+    - name: Debug current IP address
+      debug:
+        msg: "Current IP Address: {{ current_ip.stdout }}"
+
+    - name: Change IP Address if hostname matches and IP address is different
+      lineinfile:
+        path: /etc/sysconfig/network-scripts/ifcfg-ens192
+        regexp: '^IPADDR=.*'
+        line: 'IPADDR={{ item.new_ip }}'
+      loop: "{{ servers }}"
+      when: current_hostname.stdout == item.new_hostname and current_ip.stdout != item.new_ip
+
+    - name: Display message for manual restart
+      debug:
+        msg: "Hostname {{ item.new_hostname }}: IP Address has been updated to {{ item.new_ip }}. Please manually verify and restart the network service."
+      loop: "{{ servers }}"
+      when: current_hostname.stdout == item.new_hostname and current_ip.stdout != item.new_ip   
+
+    - name: Add other hosts to /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ item.new_ip }} {{ item.new_hostname }}"
+        state: present
+      loop: "{{ servers }}"
+      loop_control:
+        label: "{{ item.new_hostname }}"
+
+    - name: Add other hosts to localhost /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ item.new_ip }} {{ item.new_hostname }}"
+        state: present
+      delegate_to: localhost
+      loop: "{{ servers }}"
+      loop_control:
+        label: "{{ item.new_hostname }}"
+     
+    - name: Disable SWAP
+      shell: sed -i 's/.*swap.*/#&/' /etc/fstab
+

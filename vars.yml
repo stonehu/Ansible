@@ -1,0 +1,70 @@
+vcenter_hostname: "vm.test.com"
+vcenter_username: "administrator@test.com"
+vcenter_password: "P@ssw0rd"
+vcenter_datacenter: "Datacenter"
+vcenter_validate_certs: false
+Destination_folder: "/Datacenter/vm/VM_Testing/2-Kubernetes-120-139/4-Kubernetes-131-139/Calico"
+create_vm_name: "Ansible-Client1"
+create_vm_host_name: "ansible-1"
+create_vm_template: "Centos7.9"
+create_vm_state: "powered-on"
+create_vm_guest_id: "centos7_64Guest"
+create_vm_esxihost: "192.168.1.5"
+create_vm_esxihosts_datastore: "datastore3"
+create_vm_gbsize: 100
+create_vm_type: "thin"
+create_vm_memory_sizemb: 4096
+create_vm_cpu_core: 4
+create_vm_disk_type: "paravirtual"
+create_vm_network_select: "VM Network"
+create_vm_netmask: "255.255.255.0"
+create_vm_gateway: "192.168.1.1"
+create_vm_dns1: "114.114.114.114"
+create_vm_dns2: "8.8.8.8"
+create_vm_network_devicetype: "vmxnet3"
+create_vm_waitforip: true
+create_vm_wait_for_customization: true
+create_vm_delegate: "localhost"
+create_vm_register: "deploy_vm_state"
+ansible_ssh_pass: "P@ssw0rd"
+private_key_file: "/root/.ssh/id_rsa"
+ssh_private_key_path: "/root/.ssh/id_rsa"  # 确保路径一致
+ansible_ssh_user: "root"
+ssh_id_dsa: "/root/.ssh/id_dsa.pub"
+
+servers:
+  - new_ip: 192.168.1.131
+    new_netmask: 255.255.255.0
+    new_gateway: 192.168.1.1
+    new_dns1: 192.168.1.1
+    new_hostname: k8s-master1
+  - new_ip: 192.168.1.132
+    new_netmask: 255.255.255.0
+    new_gateway: 192.168.1.1
+    new_dns1: 192.168.1.1
+    new_hostname: k8s-master2
+  - new_ip: 192.168.1.133
+    new_netmask: 255.255.255.0
+    new_gateway: 192.168.1.1
+    new_dns1: 192.168.1.1
+    new_hostname: k8s-master3
+  - new_ip: 192.168.1.134
+    new_netmask: 255.255.255.0
+    new_gateway: 192.168.1.1
+    new_dns1: 192.168.1.1
+    new_hostname: k8s-node1
+  - new_ip: 192.168.1.135
+    new_netmask: 255.255.255.0
+    new_gateway: 192.168.1.1
+    new_dns1: 192.168.1.1
+    new_hostname: k8s-node2
+  - new_ip: 192.168.1.136
+    new_netmask: 255.255.255.0
+    new_gateway: 192.168.1.1
+    new_dns1: 192.168.1.1
+    new_hostname: k8s-node3
+  - new_ip: 192.168.1.137
+    new_netmask: 255.255.255.0
+    new_gateway: 192.168.1.1
+    new_dns1: 192.168.1.1
+    new_hostname: k8s-nfs

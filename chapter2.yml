@@ -1,0 +1,41 @@
+- name: Generate and gather SSH public key from clients
+  hosts: temporary
+  gather_facts: no
+  vars_files:
+    - vars.yml
+  vars:
+    localhost_ip: "192.168.1.20"
+    ansible_python_interpreter: /usr/bin/python3 # 确保使用正确的 Python 版本
+
+  tasks:
+    - name: Generate SSH key pair for root
+      command: ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N ""
+      args:
+        creates: /root/.ssh/id_rsa
+      register: ssh_keygen_result
+
+    - name: Read SSH public key
+      slurp:
+        src: /root/.ssh/id_rsa.pub
+      register: ssh_public_key
+
+    - name: Distribute SSH public key to all servers
+      authorized_key:
+        user: root
+        key: "{{ ssh_public_key['content'] | b64decode }}"
+      loop: "{{ servers }}"
+      delegate_to: "{{ item.new_ip }}"
+      run_once: true
+
+    - name: Test SSH connection to each server
+      shell: ssh -o StrictHostKeyChecking=no -T root@{{ item.new_ip }} 'echo "SSH connection successful"'
+      loop: "{{ servers }}"
+      register: ssh_test_result
+      ignore_errors: yes
+      run_once: true
+
+    - name: Show SSH connection test results
+      debug:
+        msg: "{{ item.item }} - {{ item.stdout }}"
+      loop: "{{ ssh_test_result.results }}"
+      when: item.failed is not defined
