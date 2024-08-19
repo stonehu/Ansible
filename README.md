@@ -1,5 +1,5 @@
 相关脚本注意 
-  如果你的环境是vmware workstation 请把chapter1.yml - name: Manage VMs in vCenter 到 - name: Disable Firewall && Selinux  （1-98）
+  如果你的环境是vmware workstation 请把chapter1.yml - name: Manage VMs in vCenter 到 - name: Disable Firewall && Selinux （1-98）
   如果你的环境是vmware vcenter 不需要修改设置 可以跳过 1-2步骤
   
 1 将ansible.tar 解压到/root/目录,所有目录保持路径保持不变,/root/ 目录下有这几个文件和文件夹 ansible  download.sh  files  install-docker-ansible.sh
@@ -34,7 +34,6 @@
   
 
 6 执行脚本如下
-
   bash /root/install-docker-ansible.sh  初始化ansible环境,重新启动后注意远程地址已经改变
   我修改的地址是192.168.1.20 计算机名是ansible  如果不和我的一样请修改相关配置,相关配置文件如下
   chapter1.yml  chapter2.yml  chapter3.yml  chapter4.yml  chapter5keepalived.yml  chapter6.yml  chapter7.yml  chapter8.yml  inventory.ini vars.yml
