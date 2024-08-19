@@ -136,4 +136,10 @@
   kubectl get nodes
   
   kubectl get pods -A
+
+
+下载ansible.zip，此链接永久有效
+通过网盘分享的文件：ansible.zip
+https://pan.baidu.com/s/1pxUNnu7rfc6itrEtdQvpEQ?pwd=6xvr 提取码: 6xvr 
+
   
