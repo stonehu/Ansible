@@ -3,6 +3,8 @@
   如果你的环境是vmware workstation 请把chapter1.yml - name: Manage VMs in vCenter 到 - name: Disable Firewall && Selinux 删除掉 （1-98）
   
   如果你的环境是vmware vcenter ansible环境请参考https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html设置， 可以跳过 1-2步骤
+
+  执行脚本时注意文件目录 
   
 1 将ansible.tar 解压到/root/目录,所有目录保持路径保持不变,/root/ 目录下有这几个文件和文件夹 ansible  download.sh  files  install-docker-ansible.sh
 
