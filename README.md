@@ -34,6 +34,7 @@
   
 
 6 执行脚本如下
+
   bash /root/install-docker-ansible.sh  初始化ansible环境,重新启动后注意远程地址已经改变
   我修改的地址是192.168.1.20 计算机名是ansible  如果不和我的一样请修改相关配置,相关配置文件如下
   chapter1.yml  chapter2.yml  chapter3.yml  chapter4.yml  chapter5keepalived.yml  chapter6.yml  chapter7.yml  chapter8.yml  inventory.ini vars.yml
@@ -52,12 +53,14 @@
   测试vip
   http://192.168.1.130:33305/monitor 
   EtCD测试
+  
   etcdctl member list -w table
   ETCDCTL_API=3 /usr/local/bin/etcdctl --write-out=table --cacert=/etc/etcd/ssl/ca.pem --cert=/etc/etcd/ssl/etcd.pem --key=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.1.131:2379,https://192.168.1.132:2379,https://192.168.1.133:2379 endpoint status
   ETCDCTL_API=3 /usr/local/bin/etcdctl --write-out=table --cacert=/etc/etcd/ssl/ca.pem --cert=/etc/etcd/ssl/etcd.pem --key=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.1.131:2379,https://192.168.1.132:2379,https://192.168.1.133:2379 endpoint health 
  
   ansible-playbook -i inventory.ini chapter6.yml 安装apiserver Kubectl 
   测试
+  
   systemctl status kube-apiserver
   kubectl cluster-info
   kubectl get componentstatuses
@@ -65,16 +68,19 @@
 
   ansible-playbook -i inventory.ini chapter7.yml  安装 Controller-Manager  Kube-Scheduler 
   测试
+  
   systemctl status kube-scheduler
   systemctl status kube-controller-manager
   kubectl get componentstatuses
 
   ansible-playbook -i inventory.ini chapter8.yml  安装 Kubelet KUBE-PROXY      
   测试
+  
   systemctl status kubelet 
   systemctl status kube-proxy
   
   登录master主机上执行以下内容
+  
   kubectl get csr --no-headers | awk '{print $1}' | xargs -r kubectl certificate approve
   kubectl create -f /root/files/calico/tigera-operator.yaml
   kubectl create -f /root/files/calico/custom-resources.yaml
