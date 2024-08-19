@@ -1,5 +1,7 @@
 相关脚本注意 
   如果你的环境是vmware workstation 请把chapter1.yml - name: Manage VMs in vCenter 到 - name: Disable Firewall && Selinux  （1-98）
+  如果你的环境是vmware vcenter 不需要修改设置 可以跳过 1-2步骤
+  
 1 将ansible.tar 解压到/root/目录,所有目录保持路径保持不变,/root/ 目录下有这几个文件和文件夹 ansible  download.sh  files  install-docker-ansible.sh
   download.sh 是执行下载必要的软件,下载的软件会到/root/files文件夹中,各软件有自己的文件目录,如果有新的软件,各位可以自定义修改,下载不成功再次执行bash download.sh,
   脚本会自动下载未下载成功的软件,实在下载不了的请手动下载放到指定的文件,另外下载了新的软件版本,请注意修改ansible脚本中所对应软件版本号,避免执行错误。
