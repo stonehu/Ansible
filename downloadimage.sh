@@ -27,4 +27,4 @@ do
       docker pull $i
 done
 mkdir -p /root/files/images/
-docker save -o /root/files/images/k8sall.tar $images_list
+docker save -o /root/files/images/all_images.tar $images_list
