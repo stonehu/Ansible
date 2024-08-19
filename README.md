@@ -6,11 +6,13 @@
 
   执行脚本时注意文件目录 
   
-1 将ansible.tar 解压到/root/目录,所有目录保持路径保持不变,/root/ 目录下有这几个文件和文件夹 ansible  download.sh  files  install-docker-ansible.sh
+1 将ansible.zipan 解压到/root/目录,所有目录保持路径保持不变,/root/ 目录下有这几个文件和文件夹 ansible  download.sh  files  install-docker-ansible.sh
 
   download.sh 是执行下载必要的软件,下载的软件会到/root/files文件夹中,各软件有自己的文件目录,如果有新的软件,各位可以自定义修改,下载不成功再次执行bash download.sh,
   
   脚本会自动下载未下载成功的软件,实在下载不了的请手动下载放到指定的文件,另外下载了新的软件版本,请注意修改ansible脚本中所对应软件版本号,避免执行错误。
+
+  downloadimage.sh 是下载
   
 
 2 接下来在/root/目录有个install-docker-ansible.sh脚本,执行方式 bash /root/install-docker-ansible.sh,
